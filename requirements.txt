@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+transformers
+torch
+langchain
+langchain-community
+langchain-text-splitters
+qdrant-client
+unstructured
+python-multipart
