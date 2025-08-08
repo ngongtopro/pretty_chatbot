@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
-from langchain_community.document_loaders import PyPDFLoader, UnstructuredWordDocumentLoader
+from langchain_community.document_loaders import PyPDFLoader, UnstructuredWordDocumentLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
@@ -9,7 +9,6 @@ import torch
 import os
 import time
 import uuid
-from langchain_community.document_loaders import TextLoader
 import tempfile
 from pydantic import BaseModel
 from typing import List
@@ -21,11 +20,13 @@ qdrant = QdrantClient(host="localhost", port=6333)
 COLLECTION_NAME = "chatbot_collection_v2"
 VECTOR_SIZE = 1024
 
-try:
-    qdrant.get_collection(COLLECTION_NAME)
-except:
-    qdrant.recreate_collection(
-        COLLECTION_NAME,
+# Khởi tạo Qdrant collection nếu chưa tồn tại
+existing_collections = qdrant.get_collections().collections
+collection_names = [c.name for c in existing_collections]
+
+if COLLECTION_NAME not in collection_names:
+    qdrant.create_collection(
+        collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
     )
 
@@ -34,10 +35,8 @@ model_name = "intfloat/multilingual-e5-large-instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModel.from_pretrained(model_name)
 
-
 class SearchRequest(BaseModel):
     query: str
-
 
 def embed_text(text: str) -> List[float]:
     with torch.no_grad():
@@ -45,7 +44,6 @@ def embed_text(text: str) -> List[float]:
         model_output = model(**encoded_input)
         embeddings = model_output.last_hidden_state.mean(dim=1).squeeze()
         return torch.nn.functional.normalize(embeddings, p=2, dim=0).tolist()
-
 
 @app.post("/search")
 async def search(req: SearchRequest):
@@ -66,7 +64,6 @@ async def search(req: SearchRequest):
         ]
     }
 
-
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
     file_ext = os.path.splitext(file.filename)[1].lower()
@@ -76,6 +73,16 @@ async def upload(file: UploadFile = File(...)):
         f.write(await file.read())
 
     try:
+        # Check lại collection một lần nữa trước khi insert
+        existing_collections = qdrant.get_collections().collections
+        collection_names = [c.name for c in existing_collections]
+
+        if COLLECTION_NAME not in collection_names:
+            qdrant.create_collection(
+                collection_name=COLLECTION_NAME,
+                vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+            )
+
         # Load file
         if file_ext == ".pdf":
             loader = PyPDFLoader(temp_path)
@@ -87,7 +94,7 @@ async def upload(file: UploadFile = File(...)):
             return JSONResponse(content={"error": "Unsupported file type"}, status_code=400)
 
         docs = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
         chunks = text_splitter.split_documents(docs)
 
         points = []
@@ -104,7 +111,7 @@ async def upload(file: UploadFile = File(...)):
             )
             points.append(point)
 
-        qdrant.upsert(COLLECTION_NAME, points=points)
+        qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
 
         return {"status": "completed", "vectors": len(points)}
     except Exception as e:
