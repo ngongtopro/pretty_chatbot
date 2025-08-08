@@ -1,0 +1,29 @@
+variables:
+  PUBLIC_URL: /
+  CI: "false"
+stages:
+  - deploy
+
+.ssh_setup: &ssh_setup
+  - mkdir -p ~/.ssh
+  - echo "$BITNAMI_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+  - chmod 700 ~/.ssh/id_rsa
+  - eval "$(ssh-agent -s)"
+  - ssh-add ~/.ssh/id_rsa
+  - ssh-keyscan -H 'gitlab.com' >> ~/.ssh/known_hosts
+
+deploy:
+  stage: deploy
+  environment:
+    name: $CI_COMMIT_REF_NAME
+  image: intiupfi/ubuntu-ssh-rsync:22.04
+  before_script:
+    - *ssh_setup
+  script:
+    - echo "Deploying to server"
+    - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER_DEPLOY@$IP_DEPLOY -p 22
+    - rsync -avz --progress --delete-after -a -e "ssh -p 22" / $USER_DEPLOY@$IP_DEPLOY:$DEPLOY_FOLDER
+    - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER_DEPLOY@$IP_DEPLOY -p 22 "cd $DEPLOY_FOLDER && pip install -r requirements.txt"
+    - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER_DEPLOY@$IP_DEPLOY -p 22 "systemctl restart $SERVICE_NAME"
+    - echo "Application successfully deployed."
+
