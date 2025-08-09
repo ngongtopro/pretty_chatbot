@@ -24,6 +24,6 @@ deploy:
     - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER_DEPLOY@$IP_DEPLOY -p 22
     - rsync -avz --progress --delete-after --exclude=/logs --exclude=/venv -e "ssh -p 22" ./ $USER_DEPLOY@$IP_DEPLOY:$DEPLOY_FOLDER
     - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER_DEPLOY@$IP_DEPLOY -p 22 "cd $DEPLOY_FOLDER && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
-    - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER_DEPLOY@$IP_DEPLOY -p 22 "systemctl restart $SERVICE_NAME"
+    - ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no $USER_DEPLOY@$IP_DEPLOY -p 22 "sudo /bin/systemctl restart $SERVICE_NAME"
     - echo "Application successfully deployed."
 
