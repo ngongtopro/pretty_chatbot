@@ -21,7 +21,7 @@ app = FastAPI()
 
 # Qdrant setup
 qdrant = QdrantClient(host="localhost", port=6333)
-COLLECTION_NAME = "chatbot_collection_v2"
+COLLECTION_NAME = "chatbot_collection_v3"
 VECTOR_SIZE = 1024
 
 # Create collection if not exists
@@ -43,36 +43,24 @@ class SearchRequest(BaseModel):
 # Hàm làm sạch query
 # ===========================
 def clean_text(text: str) -> str:
-    """Làm sạch query: bỏ chào hỏi, emoji, ký tự lạ."""
-    # Đưa về chữ thường
     text = text.lower()
-
-    # Xóa emoji và icon
     text = emoji.replace_emoji(text, replace=" ")
-
-    # Xóa cụm chào hỏi phổ biến
     greetings = [
         r"\bxin chào\b", r"\bchào\b", r"\bhello+\b", r"\bhi+\b",
         r"\balo+\b", r"\bhey+\b", r"\bchao\b"
     ]
     for g in greetings:
         text = re.sub(g, " ", text)
-
-    # Bỏ ký tự lạ, chỉ giữ chữ, số, khoảng trắng và dấu tiếng Việt
     text = re.sub(r"[^\w\sàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệ"
                   r"ìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữự"
                   r"ỳýỷỹỵđĐ]", " ", text)
-
-    # Chuẩn hóa khoảng trắng
     text = re.sub(r"\s+", " ", text).strip()
-
     return text
 
 # ===========================
 # Hàm tạo embedding
 # ===========================
 def embed_text(text: str) -> List[float]:
-    """Embed text using multilingual-e5 with L2 normalization."""
     with torch.no_grad():
         encoded_input = tokenizer(text, return_tensors='pt', truncation=True, max_length=512)
         model_output = model(**encoded_input)
@@ -81,14 +69,28 @@ def embed_text(text: str) -> List[float]:
         return norm_emb.tolist()
 
 # ===========================
+# Hàm auto chunk_overlap
+# ===========================
+def auto_select_overlap(text, max_chunk_size=1024):
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    if not sentences:
+        return 50
+    token_counts = [len(tokenizer.encode(s, add_special_tokens=False)) for s in sentences if s.strip()]
+    avg_tokens = sum(token_counts) / len(token_counts)
+    if avg_tokens > 30:
+        overlap = 100
+    elif avg_tokens >= 15:
+        overlap = 70
+    else:
+        overlap = 50
+    return min(overlap, max_chunk_size // 2)
+
+# ===========================
 # MMR re-ranking
 # ===========================
 def mmr(query_vec, doc_vecs, docs, top_k=5, lambda_param=0.7):
-    """Maximal Marginal Relevance to diversify top results."""
     selected, selected_idxs = [], []
     sim_to_query = cosine_similarity([query_vec], doc_vecs)[0]
-
-    # First: highest sim
     idx = int(np.argmax(sim_to_query))
     selected_idxs.append(idx)
     selected.append(docs[idx])
@@ -113,20 +115,17 @@ async def search(req: SearchRequest):
     cleaned_query = clean_text(req.query)
     query_vector = embed_text(f"query: {cleaned_query}")
 
-    # Step 1: get many candidates
     search_result = qdrant.search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
-        limit=50,  # fetch more for better recall
+        limit=50,
         with_payload=True,
         with_vectors=True
     )
 
-    # Step 2: prepare for MMR
-    candidates = [hit.payload.get("content", "") for hit in search_result]
+    candidates = [(hit.payload.get("content", ""), hit.payload.get("metadata", {})) for hit in search_result]
     candidate_vecs = [hit.vector for hit in search_result]
 
-    # Step 3: MMR re-rank
     selected = mmr(
         np.array(query_vector, dtype=np.float32),
         np.array(candidate_vecs, dtype=np.float32),
@@ -134,7 +133,21 @@ async def search(req: SearchRequest):
         top_k=5
     )
 
-    return {"results": selected}
+    # Gộp chunk liền kề cùng metadata
+    merged_results = []
+    prev_meta, buffer_text = None, []
+    for text, meta in selected:
+        if prev_meta == meta:
+            buffer_text.append(text)
+        else:
+            if buffer_text:
+                merged_results.append(" ".join(buffer_text))
+            buffer_text = [text]
+            prev_meta = meta
+    if buffer_text:
+        merged_results.append(" ".join(buffer_text))
+
+    return {"results": merged_results}
 
 # ===========================
 # API Upload
@@ -147,17 +160,12 @@ async def upload(file: UploadFile = File(...)):
         f.write(await file.read())
 
     try:
-        # Check lại collection
-        existing_collections = qdrant.get_collections().collections
-        collection_names = [c.name for c in existing_collections]
-
-        if COLLECTION_NAME not in collection_names:
+        if COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
             qdrant.create_collection(
                 collection_name=COLLECTION_NAME,
                 vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
             )
 
-        # Load file
         if file_ext == ".pdf":
             loader = PyPDFLoader(temp_path)
         elif file_ext == ".docx":
@@ -168,7 +176,14 @@ async def upload(file: UploadFile = File(...)):
             return JSONResponse(content={"error": "Unsupported file type"}, status_code=400)
 
         docs = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=100)
+        full_text = "\n".join([d.page_content for d in docs])
+        overlap = auto_select_overlap(full_text, max_chunk_size=1024)
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1024,
+            chunk_overlap=overlap,
+            separators=["\n\n", "\n", ". ", "? ", "! ", "; "]
+        )
         chunks = text_splitter.split_documents(docs)
 
         points = []
@@ -182,7 +197,7 @@ async def upload(file: UploadFile = File(...)):
             ))
 
         qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
-        return {"status": "completed", "vectors": len(points)}
+        return {"status": "completed", "vectors": len(points), "overlap_used": overlap}
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
     finally:
