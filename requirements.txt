@@ -8,3 +8,6 @@ langchain-text-splitters
 qdrant-client
 unstructured
 python-multipart
+emoji
+scikit-learn
+numpy
