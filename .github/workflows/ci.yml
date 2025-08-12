@@ -30,7 +30,7 @@ jobs:
       # 4. Chạy migrate và test
       - name: Run tests
         env:
-          DJANGO_SETTINGS_MODULE: myproject.settings
+          DJANGO_SETTINGS_MODULE: pretty_chatbot.settings
         run: |
           python manage.py migrate
           python manage.py test
