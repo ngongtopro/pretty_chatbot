@@ -24,9 +24,9 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: ${{ secrets.DATABASE_NAME }}
-          POSTGRES_USER: ${{ secrets.DATABASE_USERNAME }}
-          POSTGRES_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+          POSTGRES_DB: "chatbot_database"
+          POSTGRES_USER: "tinh"
+          POSTGRES_PASSWORD: "123456"
         ports:
           - 5432:5432
         options: >-
