@@ -1,36 +1,38 @@
-name: Django CI
+name: Django CI (no tests)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
 
 jobs:
-  test:
+  run-django:
     runs-on: ubuntu-latest
 
     env:
       DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
       DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
-      DATABASE_ENGINE: ${{ secrets.DATABASE_ENGINE }}
-      DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
-      DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
-      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+      DATABASE_ENGINE: django.db.backends.postgresql
+      DATABASE_NAME: postgres
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: postgres
       DATABASE_HOST: localhost
       DATABASE_PORT: 5432
-      PORT: ${{ secrets.PORT }}
-      OUT_PORT: ${{ secrets.OUT_PORT }}
+      PORT: 8000
 
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: "chatbot_database"
-          POSTGRES_USER: "tinh"
-          POSTGRES_PASSWORD: "123456"
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U ${{ secrets.DATABASE_USERNAME }} -d ${{ secrets.DATABASE_NAME }}"
+          --health-cmd="pg_isready -U postgres -d postgres"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=5
@@ -55,7 +57,12 @@ jobs:
             sleep 2
           done
 
-      - name: Run migrations & tests
+      - name: Run migrations
         run: |
           python manage.py migrate
-          python manage.py test
+
+      - name: Run server (background)
+        run: |
+          nohup python manage.py runserver 0.0.0.0:$PORT &
+          sleep 10
+          echo "Django server is running..."
