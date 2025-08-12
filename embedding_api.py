@@ -194,7 +194,7 @@ async def search(req: SearchRequest):
         np.array(query_vector, dtype=np.float32),
         sorted_vecs,
         sorted_candidates,
-        top_k=5
+        top_k=10
     )
 
     # Merge consecutive chunks with same metadata
