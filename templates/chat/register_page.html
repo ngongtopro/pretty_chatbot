@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block content %}
+<div class="max-w-md mx-auto p-6">
+  <h2 class="text-xl font-semibold mb-4">{% trans "Đăng ký" %}</h2>
+  <form method="post" class="space-y-3">
+    {% csrf_token %}
+    {% for field in form %}
+      <div>
+        <label class="block text-sm mb-1">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<p class="text-xs text-red-600">{{ field.errors|striptags }}</p>{% endif %}
+      </div>
+    {% endfor %}
+    {% if form.non_field_errors %}
+      <p class="text-xs text-red-600">{{ form.non_field_errors|striptags }}</p>
+    {% endif %}
+    <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-2">{% trans "Đăng ký" %}</button>
+  </form>
+</div>
+{% endblock %}
