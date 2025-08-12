@@ -226,6 +226,12 @@ async def upload(file: UploadFile = File(...)):
         f.write(await file.read())
 
     try:
+        if COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
+            qdrant.create_collection(
+                collection_name=COLLECTION_NAME,
+                vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+            )
+
         if file_ext == ".pdf":
             loader = PyPDFLoader(temp_path)
         elif file_ext == ".docx":
