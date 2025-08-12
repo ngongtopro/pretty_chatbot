@@ -8,7 +8,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # Inject toàn bộ secrets vào env của job
     env:
       DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
       DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
@@ -25,13 +24,13 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: ${{ env.DATABASE_NAME }}
-          POSTGRES_USER: ${{ env.DATABASE_USERNAME }}
-          POSTGRES_PASSWORD: ${{ env.DATABASE_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.DATABASE_NAME }}
+          POSTGRES_USER: ${{ secrets.DATABASE_USERNAME }}
+          POSTGRES_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U ${{ env.DATABASE_USERNAME }} -d ${{ env.DATABASE_NAME }}"
+          --health-cmd="pg_isready -U ${{ secrets.DATABASE_USERNAME }} -d ${{ secrets.DATABASE_NAME }}"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=5
