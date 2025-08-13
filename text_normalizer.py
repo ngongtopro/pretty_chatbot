@@ -8,7 +8,8 @@ from typing import List
 from symspellpy import SymSpell, Verbosity
 from langchain_community.document_loaders import PyPDFLoader, UnstructuredWordDocumentLoader, TextLoader
 from charset_normalizer import detect
-
+last_dict_mtime = None
+last_abbr_mtime = None
 # Cấu hình logging
 logging.basicConfig(
     level=logging.INFO,
@@ -79,7 +80,7 @@ def load_resources_if_changed():
             sym.load_dictionary(dictionary_stream, term_index=0, count_index=1, separator=" ")
             sym_spell = sym
             last_dict_mtime = dict_mtime
-            logger.info(f"✅ Dictionary loaded with {sym_spell.words_count} words")
+            logger.info(f"✅ Dictionary loaded with {sym_spell.word_count} words")
 
     # Kiểm tra abbreviations
     if os.path.exists(ABBR_PATH):
