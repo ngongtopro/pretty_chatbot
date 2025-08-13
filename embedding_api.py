@@ -17,6 +17,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import re
 import emoji
 import logging
+from text_normalizer import update_dictionary_from_files, normalize_query
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -46,25 +47,6 @@ model.to(device)
 
 class SearchRequest(BaseModel):
     query: str
-
-# ===========================
-# Clean query text
-# ===========================
-def clean_text(text: str) -> str:
-    text = text.lower()
-    # Keep emojis for now, remove only if not relevant (can add logic later)
-    # text = emoji.replace_emoji(text, replace=" ")
-    greetings = [
-        r"\bxin chào\b", r"\bchào\b", r"\bhello+\b", r"\bhi+\b",
-        r"\balo+\b", r"\bhey+\b", r"\bchao\b"
-    ]
-    for g in greetings:
-        text = re.sub(g, " ", text, flags=re.IGNORECASE)
-    text = re.sub(r"[^\w\sàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệ"
-                  r"ìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữự"
-                  r"ỳýỷỹỵđĐ]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
 
 # ===========================
 # Batch Embedding helper
@@ -147,12 +129,35 @@ def mmr(query_vec: np.ndarray, doc_vecs: np.ndarray, docs: List, top_k: int = 5,
     return selected
 
 # ===========================
+# API Upload từ điển
+# ===========================
+@app.post("/upload_dict")
+async def upload_dict(files: List[UploadFile] = File(...)):
+    temp_paths = []
+    for file in files:
+        ext = os.path.splitext(file.filename)[1]
+        temp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}{ext}")
+        with open(temp_path, "wb") as f:
+            f.write(await file.read())
+        temp_paths.append(temp_path)
+
+    result = update_dictionary_from_files(temp_paths)
+
+    for path in temp_paths:
+        os.remove(path)
+
+    return {"status": "dictionary updated", **result}
+
+
+# ===========================
 # Search API with Hybrid
 # ===========================
 @app.post("/search")
 async def search(req: SearchRequest):
     start_time = time.time()
-    cleaned_query = clean_text(req.query)
+    logger.info(f"Raw question: {req.query}")
+    cleaned_query = normalize_query(req.query)
+    logger.info(f"Normalized question: {cleaned_query}")
     query_vector = embed_texts([f"query: {cleaned_query}"])[0]
     query_tokens = cleaned_query.lower().split()
 
@@ -194,7 +199,7 @@ async def search(req: SearchRequest):
         np.array(query_vector, dtype=np.float32),
         sorted_vecs,
         sorted_candidates,
-        top_k=10
+        top_k=5
     )
 
     # Merge consecutive chunks with same metadata

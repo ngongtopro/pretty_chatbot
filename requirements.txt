@@ -11,6 +11,8 @@ python-multipart
 emoji
 scikit-learn
 numpy
-logging
 pydantic
 tiktoken
+symspellpy
+python-docx
+pandas
