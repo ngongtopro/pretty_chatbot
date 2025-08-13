@@ -37,6 +37,8 @@ services:
       DATABASE_PORT: ${DATABASE_PORT}
     env_file:
       - .env
+    volumes:
+      - .:/app
     restart: unless-stopped
 volumes:
   postgres_data:

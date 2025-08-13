@@ -4,46 +4,125 @@
 {% block title %}Chatbot · {{ CHATBOT_NAME }}{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-  <div class="grid grid-cols-12 gap-4">
-    <aside class="col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl h-[calc(100vh-8rem)] overflow-hidden flex flex-col">
-      <div class="p-3 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2">
-        <a href="{% url 'chat:new_conversation' %}" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-2 text-sm text-center">{% trans "Cuộc trò chuyện mới" %}</a>
+<style>
+.typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.typing-dots span {
+  height: 8px;
+  width: 8px;
+  background-color: #6b7280;
+  border-radius: 50%;
+  display: inline-block;
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typing {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+</style>
+
+<div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 sm:py-4">
+  <div class="grid grid-cols-12 gap-2 sm:gap-4">
+    <!-- Sidebar - ẩn trên mobile, hiện trên tablet+ -->
+    <aside class="hidden md:block col-span-12 md:col-span-3 lg:col-span-3 xl:col-span-3 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl h-[calc(100vh-6rem)] sm:h-[calc(100vh-8rem)] overflow-hidden flex flex-col">
+      <div class="p-2 sm:p-3 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2">
+        <a href="{% url 'chat:new_conversation' %}" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-2 sm:px-3 py-2 text-xs sm:text-sm text-center">{% trans "Cuộc trò chuyện mới" %}</a>
       </div>
       <div class="flex-1 overflow-y-auto">
-        <ul class="p-2 space-y-1">
+        <ul class="p-1 sm:p-2 space-y-1">
           {% for c in conversations %}
             <li>
-              <a href="{% url 'chat:conversation' c.pk %}" class="flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-gray-100 dark:hover:bg-gray-800 {% if c.pk == active_conversation.pk %}bg-gray-100 dark:bg-gray-800{% endif %}">
+              <a href="{% url 'chat:conversation' c.pk %}" class="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm hover:bg-gray-100 dark:hover:bg-gray-800 {% if c.pk == active_conversation.pk %}bg-gray-100 dark:bg-gray-800{% endif %}">
                 <span class="truncate">{{ c.title }}</span>
-                <span class="ml-auto text-xs text-gray-500">{{ c.created_at|human_timestamp }}</span>
+                <span class="ml-auto text-xs text-gray-500 hidden sm:inline">{{ c.created_at|human_timestamp }}</span>
               </a>
             </li>
           {% empty %}
-            <li class="px-3 py-2 text-sm text-gray-500">{% trans "Chưa có cuộc trò chuyện" %}</li>
+            <li class="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-500">{% trans "Chưa có cuộc trò chuyện" %}</li>
           {% endfor %}
         </ul>
       </div>
     </aside>
 
-    <section class="col-span-12 md:col-span-9 lg:col-span-9 xl:col-span-9 border border-gray-200 dark:border-gray-800 rounded-xl h-[calc(100vh-8rem)] overflow-hidden flex flex-col">
-      <div class="h-14 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4">
-        <div class="flex items-center gap-3">
-          <img src="{{ CHATBOT_AVATAR }}" alt="Bot avatar" class="w-8 h-8 rounded-full" />
+    <!-- Mobile menu button - chỉ hiện trên mobile -->
+    <div class="md:hidden col-span-12 mb-2">
+      <button id="mobileMenuBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-2 text-sm flex items-center justify-center gap-2">
+        <span>{% trans "Danh sách chat" %}</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mobile sidebar overlay -->
+    <div id="mobileSidebar" class="fixed inset-0 z-50 md:hidden hidden">
+      <div class="absolute inset-0 bg-black bg-opacity-50" id="sidebarOverlay"></div>
+      <div class="absolute left-0 top-0 h-full w-80 max-w-[85vw] bg-white dark:bg-gray-900 flex flex-col">
+        <div class="p-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <h2 class="font-medium">{% trans "Cuộc trò chuyện" %}</h2>
+          <button id="closeSidebar" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="p-3 border-b border-gray-200 dark:border-gray-800">
+          <a href="{% url 'chat:new_conversation' %}" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-2 text-sm text-center block">{% trans "Cuộc trò chuyện mới" %}</a>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          <ul class="p-2 space-y-1">
+            {% for c in conversations %}
+              <li>
+                <a href="{% url 'chat:conversation' c.pk %}" class="flex items-center gap-2 px-3 py-3 rounded-md text-sm hover:bg-gray-100 dark:hover:bg-gray-800 {% if c.pk == active_conversation.pk %}bg-gray-100 dark:bg-gray-800{% endif %}">
+                  <span class="truncate">{{ c.title }}</span>
+                  <span class="ml-auto text-xs text-gray-500">{{ c.created_at|human_timestamp }}</span>
+                </a>
+              </li>
+            {% empty %}
+              <li class="px-3 py-2 text-sm text-gray-500">{% trans "Chưa có cuộc trò chuyện" %}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <section class="col-span-12 md:col-span-9 lg:col-span-9 xl:col-span-9 border border-gray-200 dark:border-gray-800 rounded-xl h-[calc(100vh-10rem)] sm:h-[calc(100vh-8rem)] overflow-hidden flex flex-col">
+      <div class="h-12 sm:h-14 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-3 sm:px-4 flex-shrink-0">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <img src="{{ CHATBOT_AVATAR }}" alt="Bot avatar" class="w-6 h-6 sm:w-8 sm:h-8 rounded-full" />
           <div class="flex flex-col">
-            <span class="font-medium">{{ CHATBOT_NAME }}</span>
-            <span class="text-xs text-gray-500">{% trans "Sẵn sàng trợ giúp" %}</span>
+            <span class="font-medium text-sm sm:text-base">{{ CHATBOT_NAME }}</span>
+            <span class="text-xs text-gray-500 hidden sm:block">{% trans "Sẵn sàng trợ giúp" %}</span>
           </div>
         </div>
-        <div class="text-sm text-gray-600 dark:text-gray-400">
+        <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
           {% if user.is_authenticated %}{{ user.username }}{% else %}{% trans "Khách" %}{% endif %}
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-white dark:bg-gray-950">
+      <div id="messagesContainer" class="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 sm:space-y-4 bg-white dark:bg-gray-950">
         {% for m in messages %}
           <div class="flex {% if m.sender == 'user' %}justify-end{% else %}justify-start{% endif %}">
-            <div class="max-w-[80%]">
+            <div class="max-w-[85%] sm:max-w-[80%]">
               <div class="text-xs mb-1 text-gray-500 {% if m.sender == 'user' %}text-right{% endif %}">
                 {% if m.sender == 'user' %}{% trans "Bạn" %}{% else %}{{ CHATBOT_NAME }}{% endif %} · {{ m.created_at|human_timestamp }}
               </div>
@@ -59,11 +138,27 @@
             </div>
           </div>
         {% empty %}
-          <p class="text-sm text-gray-500 text-center py-8">{% trans "Hãy bắt đầu cuộc trò chuyện!" %}</p>
+          <p class="text-sm text-gray-500 text-center py-6 sm:py-8">{% trans "Hãy bắt đầu cuộc trò chuyện!" %}</p>
         {% endfor %}
+        
+        <!-- Typing indicator -->
+        <div id="typingIndicator" class="flex justify-start hidden">
+          <div class="max-w-[85%] sm:max-w-[80%]">
+            <div class="text-xs mb-1 text-gray-500">
+              {{ CHATBOT_NAME }} · {% trans "đang trả lời" %}...
+            </div>
+            <div class="rounded-lg px-3 py-2 text-sm leading-relaxed bg-gray-100 dark:bg-gray-900 rounded-bl-none">
+              <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="border-t border-gray-200 dark:border-gray-800 p-3">
+      <div class="border-t border-gray-200 dark:border-gray-800 p-2 sm:p-3 flex-shrink-0 bg-white dark:bg-gray-950">
         <form id="chatForm" method="post" action="{% url 'chat:send_message' active_conversation.pk %}" enctype="multipart/form-data" class="space-y-2">
           {% csrf_token %}
           {% if form.non_field_errors %}
@@ -72,13 +167,13 @@
           <div class="relative">
             {{ form.content }}
           </div>
-          <div class="flex items-center justify-between gap-3">
-            <label class="inline-flex items-center gap-2 text-sm cursor-pointer">
+          <div class="flex items-center justify-between gap-2 sm:gap-3">
+            <label class="inline-flex items-center gap-1 sm:gap-2 text-xs sm:text-sm cursor-pointer">
               <input type="file" name="attachment" class="hidden" onchange="this.nextElementSibling.textContent = this.files[0]?.name || 'Chọn tệp'" />
-              <span class="px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900">{% trans "Đính kèm" %}</span>
-              <span class="text-xs text-gray-500">{% trans "Chọn tệp" %}</span>
+              <span class="px-2 sm:px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900 text-xs sm:text-sm">{% trans "Đính kèm" %}</span>
+              <span class="text-xs text-gray-500 hidden sm:inline">{% trans "Chọn tệp" %}</span>
             </label>
-            <button type="submit" class="ml-auto px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm">{% trans "Gửi" %}</button>
+            <button type="submit" class="ml-auto px-3 sm:px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm">{% trans "Gửi" %}</button>
           </div>
         </form>
       </div>
@@ -90,16 +185,168 @@
 document.addEventListener('DOMContentLoaded', function() {
     const chatForm = document.getElementById('chatForm');
     const textarea = chatForm.querySelector('textarea[name="content"]');
+    const messagesContainer = document.getElementById('messagesContainer');
+    const typingIndicator = document.getElementById('typingIndicator');
+    const submitButton = chatForm.querySelector('button[type="submit"]');
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const mobileSidebar = document.getElementById('mobileSidebar');
+    const closeSidebar = document.getElementById('closeSidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
     
+    // Hàm scroll xuống cuối
+    function scrollToBottom() {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    // Hiển thị typing indicator
+    function showTypingIndicator() {
+        typingIndicator.classList.remove('hidden');
+        scrollToBottom();
+    }
+    
+    // Ẩn typing indicator
+    function hideTypingIndicator() {
+        typingIndicator.classList.add('hidden');
+    }
+    
+    // Tự động scroll xuống cuối khi trang load
+    scrollToBottom();
+    
+    // Scroll xuống cuối khi có thay đổi trong container (tin nhắn mới)
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+                scrollToBottom();
+            }
+        });
+    });
+    
+    observer.observe(messagesContainer, {
+        childList: true,
+        subtree: true
+    });
+    
+    // Handle form submission with AJAX
+    if (chatForm) {
+        chatForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(chatForm);
+            const messageContent = formData.get('content');
+            
+            if (!messageContent || !messageContent.trim()) {
+                return;
+            }
+            
+            // Disable form
+            submitButton.disabled = true;
+            textarea.disabled = true;
+            
+            // Add user message to UI immediately
+            addMessageToUI('user', messageContent);
+            
+            // Clear form
+            textarea.value = '';
+            
+            // Show typing indicator
+            showTypingIndicator();
+            
+            // Get conversation ID from URL or form action
+            const conversationId = '{{ active_conversation.pk }}';
+            const sendUrl = "{% url 'chat:send_message' pk=active_conversation.pk %}";
+            
+            // Send AJAX request
+            fetch(sendUrl, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideTypingIndicator();
+                
+                if (data.success) {
+                    // Add bot response to UI
+                    addMessageToUI('bot', data.bot_message);
+                } else {
+                    // Handle error
+                    addMessageToUI('bot', data.error || 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                hideTypingIndicator();
+                addMessageToUI('bot', 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.');
+            })
+            .finally(() => {
+                // Re-enable form
+                submitButton.disabled = false;
+                textarea.disabled = false;
+                textarea.focus();
+            });
+        });
+    }
+    
+    // Function to add message to UI
+    function addMessageToUI(sender, content) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+        
+        const now = new Date().toLocaleTimeString('vi-VN', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+        
+        messageDiv.innerHTML = `
+            <div class="max-w-[85%] sm:max-w-[80%]">
+                <div class="text-xs mb-1 text-gray-500 ${sender === 'user' ? 'text-right' : ''}">
+                    ${sender === 'user' ? 'Bạn' : '{{ CHATBOT_NAME|escapejs }}'} · ${now}
+                </div>
+                <div class="rounded-lg px-3 py-2 text-sm leading-relaxed ${sender === 'user' ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-gray-100 dark:bg-gray-900 rounded-bl-none'}">
+                    ${content.replace(/\n/g, '<br>')}
+                </div>
+            </div>
+        `;
+        
+        // Insert before typing indicator
+        messagesContainer.insertBefore(messageDiv, typingIndicator);
+        scrollToBottom();
+    }
+    
+    // Mobile sidebar functionality
+    if (mobileMenuBtn && mobileSidebar) {
+        mobileMenuBtn.addEventListener('click', function() {
+            mobileSidebar.classList.remove('hidden');
+        });
+        
+        function closeMobileSidebar() {
+            mobileSidebar.classList.add('hidden');
+        }
+        
+        if (closeSidebar) {
+            closeSidebar.addEventListener('click', closeMobileSidebar);
+        }
+        
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', closeMobileSidebar);
+        }
+        
+        // Close sidebar when clicking on a conversation link
+        const conversationLinks = mobileSidebar.querySelectorAll('a[href*="conversation"]');
+        conversationLinks.forEach(link => {
+            link.addEventListener('click', closeMobileSidebar);
+        });
+    }
+    
+    // Handle Enter key
     if (textarea) {
         textarea.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                
-                // Kiểm tra xem textarea có nội dung không (bỏ qua khoảng trắng)
-                if (textarea.value.trim()) {
-                    chatForm.submit();
-                }
+                chatForm.dispatchEvent(new Event('submit'));
             }
         });
     }
