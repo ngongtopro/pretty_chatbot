@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
     build-essential \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -23,6 +24,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Copy và set permission cho các script
+COPY wait-for-it.sh /wait-for-it.sh
+COPY start.sh /start.sh
+RUN chmod +x /wait-for-it.sh /start.sh
+
 ARG PORT=1005
 
 ENV PORT=${PORT}
@@ -30,6 +36,7 @@ ENV PORT=${PORT}
 # Expose the Django port
 EXPOSE ${PORT}
 
-CMD ["sh", "-c", "python manage.py runserver 0.0.0.0:${PORT}"]
-#CMD sh -c "python manage.py runserver 0.0.0.0:${PORT}" chỉ nên dùng ở dev
-#CMD ["python", "manage.py", "runserver", "0.0.0.0:${PORT}"]
+CMD ["/start.sh"]
+# Các option khác:
+#CMD ["/wait-for-it.sh", "db", "5432", "python", "manage.py", "runserver", "0.0.0.0:1005"]
+#CMD ["sh", "-c", "python manage.py runserver 0.0.0.0:${PORT}"]
