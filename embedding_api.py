@@ -307,6 +307,7 @@ async def upload(file: UploadFile = File(...)):
         # Add file_name to metadata
         for chunk in chunks:
             chunk.metadata["file_name"] = file.filename
+            chunk.metadata["upsert_timestamp"] = int(time.time())
 
         # Batch embed
         texts = [f"passage: {chunk.page_content}" for chunk in chunks]
