@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from langchain_community.document_loaders import PyPDFLoader, UnstructuredWordDocumentLoader, TextLoader
 from langchain_text_splitters import TokenTextSplitter
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from qdrant_client.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue, MatchText
 from transformers import AutoTokenizer, AutoModel
 import torch
 import os
@@ -11,7 +11,7 @@ import time
 import uuid
 import tempfile
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import re
@@ -47,6 +47,7 @@ model.to(device)
 
 class SearchRequest(BaseModel):
     query: str
+    filename: Optional[str] = None
 
 # ===========================
 # Batch Embedding helper
@@ -161,15 +162,30 @@ async def search(req: SearchRequest):
     query_vector = embed_texts([f"query: {cleaned_query}"])[0]
     query_tokens = cleaned_query.lower().split()
 
+    # Nếu có filename thì tạo filter
+    qdrant_filter = None
+    if getattr(req, "filename", None):
+        qdrant_filter = Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.file_name",  # Trường metadata
+                    match=MatchValue(value=req.filename)
+                )
+            ]
+        )
+        logger.info(f"Applying filename filter: {req.filename}")
+
     # Vector search to get candidates
     search_result = qdrant.search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
         limit=50,
         with_payload=True,
-        with_vectors=True
+        with_vectors=True,
+        query_filter=qdrant_filter
     )
-
+    if not search_result:
+        return {"results": []}
     candidates = [(hit.payload.get("content", ""), hit.payload.get("metadata", {})) for hit in search_result]
     candidate_texts = [content for content, meta in candidates]
     candidate_vecs = np.array([hit.vector for hit in search_result], dtype=np.float32)
@@ -206,6 +222,8 @@ async def search(req: SearchRequest):
     merged_results = []
     prev_meta, buffer_text = None, []
     for text, meta in selected:
+        logger.info(f"Meta: {meta}")
+        logger.info(f"Text: {text}")
         if prev_meta == meta:
             buffer_text.append(text)
         else:
