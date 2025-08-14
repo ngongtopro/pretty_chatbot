@@ -164,7 +164,7 @@ async def search(req: SearchRequest):
     query_tokens = cleaned_query.lower().split()
 
     # ------------------------------
-    # 1️⃣ Nếu có filename → dùng luôn để lọc
+    # Nếu có filename → dùng luôn để lọc
     # ------------------------------
     qdrant_filter = None
     if req.filename:
@@ -178,33 +178,9 @@ async def search(req: SearchRequest):
         )
         logger.info(f"Applying filename filter from request: {req.filename}")
 
-    # ------------------------------
-    # 2️⃣ Nếu không có filename → search trước để lấy file_name top1
-    # ------------------------------
-    if not req.filename:
-        temp_result = qdrant.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=query_vector,
-            limit=1,
-            with_payload=True,
-            with_vectors=False
-        )
-        if not temp_result:
-            return {"results": []}
-        top_filename = temp_result[0].payload.get("metadata", {}).get("file_name")
-        if top_filename:
-            qdrant_filter = Filter(
-                must=[
-                    FieldCondition(
-                        key="metadata.file_name",
-                        match=MatchValue(value=top_filename)
-                    )
-                ]
-            )
-            logger.info(f"No filename provided → restricting search to file: {top_filename}")
 
     # ------------------------------
-    # 3️⃣ Search trong file được chọn
+    # Search trong file được chọn
     # ------------------------------
     search_result = qdrant.search(
         collection_name=COLLECTION_NAME,
