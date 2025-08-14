@@ -153,6 +153,7 @@ async def upload_dict(files: List[UploadFile] = File(...)):
 # ===========================
 # Search API with Hybrid
 # ===========================
+
 @app.post("/search")
 async def search(req: SearchRequest):
     start_time = time.time()
@@ -162,20 +163,49 @@ async def search(req: SearchRequest):
     query_vector = embed_texts([f"query: {cleaned_query}"])[0]
     query_tokens = cleaned_query.lower().split()
 
-    # Nếu có filename thì tạo filter
+    # ------------------------------
+    # 1️⃣ Nếu có filename → dùng luôn để lọc
+    # ------------------------------
     qdrant_filter = None
-    if getattr(req, "filename", None):
+    if req.filename:
         qdrant_filter = Filter(
             must=[
                 FieldCondition(
-                    key="metadata.file_name",  # Trường metadata
+                    key="metadata.file_name",
                     match=MatchValue(value=req.filename)
                 )
             ]
         )
-        logger.info(f"Applying filename filter: {req.filename}")
+        logger.info(f"Applying filename filter from request: {req.filename}")
 
-    # Vector search to get candidates
+    # ------------------------------
+    # 2️⃣ Nếu không có filename → search trước để lấy file_name top1
+    # ------------------------------
+    if not req.filename:
+        temp_result = qdrant.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=query_vector,
+            limit=1,
+            with_payload=True,
+            with_vectors=False
+        )
+        if not temp_result:
+            return {"results": []}
+        top_filename = temp_result[0].payload.get("metadata", {}).get("file_name")
+        if top_filename:
+            qdrant_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="metadata.file_name",
+                        match=MatchValue(value=top_filename)
+                    )
+                ]
+            )
+            logger.info(f"No filename provided → restricting search to file: {top_filename}")
+
+    # ------------------------------
+    # 3️⃣ Search trong file được chọn
+    # ------------------------------
     search_result = qdrant.search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
@@ -184,46 +214,47 @@ async def search(req: SearchRequest):
         with_vectors=True,
         query_filter=qdrant_filter
     )
+
     if not search_result:
         return {"results": []}
+
+    # Lấy candidates
     candidates = [(hit.payload.get("content", ""), hit.payload.get("metadata", {})) for hit in search_result]
     candidate_texts = [content for content, meta in candidates]
     candidate_vecs = np.array([hit.vector for hit in search_result], dtype=np.float32)
 
-    # BM25 on candidates
+    # BM25 scoring
     bm25_scores = compute_bm25_scores(query_tokens, candidate_texts)
-    # Normalize BM25 scores
     if np.max(bm25_scores) - np.min(bm25_scores) != 0:
         bm25_norm = (bm25_scores - np.min(bm25_scores)) / (np.max(bm25_scores) - np.min(bm25_scores))
     else:
         bm25_norm = np.zeros_like(bm25_scores)
-    
-    # Vector similarities (already from cosine)
+
+    # Vector similarity
     vec_sim = cosine_similarity([query_vector], candidate_vecs)[0]
 
-    # Hybrid scores: weighted sum (e.g., 0.4 BM25 + 0.6 Vector)
+    # Hybrid score
     alpha = 0.4
     hybrid_scores = alpha * bm25_norm + (1 - alpha) * vec_sim
 
-    # Sort candidates by hybrid scores
+    # Sort & MMR
     sorted_indices = np.argsort(hybrid_scores)[::-1]
-    sorted_candidates = [candidates[i] for i in sorted_indices[:50]]  # Keep top 50 after hybrid
+    sorted_candidates = [candidates[i] for i in sorted_indices[:50]]
     sorted_vecs = candidate_vecs[sorted_indices[:50]]
 
-    # MMR on hybrid-sorted candidates
     selected = mmr(
         np.array(query_vector, dtype=np.float32),
         sorted_vecs,
         sorted_candidates,
-        top_k=5
+        top_k=7
     )
 
-    # Merge consecutive chunks with same metadata
+    # Merge kết quả cùng file
     merged_results = []
     prev_meta, buffer_text = None, []
     for text, meta in selected:
-        logger.info(f"Meta: {meta}")
-        logger.info(f"Text: {text}")
+        logger.info(f"Meta: {meta} \n")
+        logger.info(f"Text: {text} \n")
         if prev_meta == meta:
             buffer_text.append(text)
         else:
