@@ -2,3 +2,4 @@ django
 psycopg2
 dotenv
 openai
+qdrant-client

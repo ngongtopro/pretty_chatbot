@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.humanize",
     "chat",
+    "qdrant_manager",
 ]
 
 MIDDLEWARE = [

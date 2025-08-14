@@ -1,0 +1,339 @@
+{% extends 'qdrant_manager/base.html' %}
+{% load qdrant_extras %}
+
+{% block title %}Qdrant Collections{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow-lg rounded-lg">
+    <!-- Header -->
+    <div class="px-6 py-4 border-b border-gray-200">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800">
+                <i class="fas fa-database mr-2 text-blue-600"></i>
+                Qdrant Collections
+            </h1>
+            <a href="{% url 'qdrant_manager:collection_create' %}" 
+               class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
+                <i class="fas fa-plus mr-2"></i>
+                Tạo Collection
+            </a>
+        </div>
+        
+        <!-- Stats -->
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-blue-50 p-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-cubes text-blue-600 text-xl mr-3"></i>
+                    <div>
+                        <p class="text-sm text-gray-600">Tổng Collections</p>
+                        <p class="text-lg font-semibold text-gray-800">{{ total_collections }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-green-50 p-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-check-circle text-green-600 text-xl mr-3"></i>
+                    <div>
+                        <p class="text-sm text-gray-600">Đã đồng bộ</p>
+                        <p class="text-lg font-semibold text-gray-800">{{ server_collections|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-yellow-50 p-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-vector-square text-yellow-600 text-xl mr-3"></i>
+                    <div>
+                        <p class="text-sm text-gray-600">Tổng Vectors</p>
+                        <p class="text-lg font-semibold text-gray-800">
+                            {% for collection in page_obj %}
+                                {% if forloop.first %}{{ collection.vectors_count|default:0 }}{% endif %}
+                                {% if not forloop.first %}+{{ collection.vectors_count|default:0 }}{% endif %}
+                            {% empty %}0{% endfor %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="px-6 py-4 border-b border-gray-200">
+        <form method="GET" class="flex gap-2">
+            <div class="flex-1">
+                <input type="text" name="search" 
+                       value="{{ search_query }}"
+                       placeholder="Tìm kiếm collection theo tên hoặc mô tả..."
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+            <button type="submit" 
+                    class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg">
+                <i class="fas fa-search"></i>
+                Tìm kiếm
+            </button>
+            {% if search_query %}
+                <a href="{% url 'qdrant_manager:collection_list' %}" 
+                   class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded-lg">
+                    <i class="fas fa-times"></i>
+                    Xóa
+                </a>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- Collections Table -->
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Collection
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Vector Size
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Distance Metric
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Points
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Ngày tạo
+                    </th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Thao tác
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for collection in page_obj %}
+                <tr id="collection-{{ collection.pk }}" class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 h-10 w-10">
+                                <div class="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                    <i class="fas fa-cube text-blue-600"></i>
+                                </div>
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-medium text-gray-900">
+                                    <a href="{% url 'qdrant_manager:point_list' collection.pk %}" 
+                                       class="hover:text-blue-600">
+                                        {{ collection.name }}
+                                    </a>
+                                </div>
+                                {% if collection.description %}
+                                <div class="text-sm text-gray-500">
+                                    {{ collection.description|truncatechars:50 }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                            {{ collection.vector_size }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {{ collection.distance_metric|capfirst }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="font-medium">{{ collection.points_count|default:0 }}</span>
+                        points
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if collection.qdrant_synced %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                <i class="fas fa-check mr-1"></i>
+                                Đã đồng bộ
+                            </span>
+                        {% else %}
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                <i class="fas fa-clock mr-1"></i>
+                                Chưa đồng bộ
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{ collection.created_at|date:"d/m/Y H:i" }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div class="flex items-center justify-end space-x-2">
+                            <a href="{% url 'qdrant_manager:point_list' collection.pk %}" 
+                               class="text-blue-600 hover:text-blue-900 bg-blue-100 hover:bg-blue-200 px-3 py-1 rounded-lg text-xs" 
+                               title="Xem points">
+                                <i class="fas fa-eye mr-1"></i>
+                                Points
+                            </a>
+                            <a href="{% url 'qdrant_manager:search_points' collection.pk %}" 
+                               class="text-green-600 hover:text-green-900 bg-green-100 hover:bg-green-200 px-3 py-1 rounded-lg text-xs" 
+                               title="Tìm kiếm">
+                                <i class="fas fa-search mr-1"></i>
+                                Search
+                            </a>
+                            <a href="{% url 'qdrant_manager:collection_edit' collection.pk %}" 
+                               class="text-yellow-600 hover:text-yellow-900 bg-yellow-100 hover:bg-yellow-200 px-3 py-1 rounded-lg text-xs" 
+                               title="Chỉnh sửa">
+                                <i class="fas fa-edit mr-1"></i>
+                                Sửa
+                            </a>
+                            <button onclick="deleteCollection({{ collection.pk }}, '{{ collection.name }}')" 
+                                    class="text-red-600 hover:text-red-900 bg-red-100 hover:bg-red-200 px-3 py-1 rounded-lg text-xs" 
+                                    title="Xóa">
+                                <i class="fas fa-trash mr-1"></i>
+                                Xóa
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="px-6 py-8 text-center">
+                        <div class="text-gray-500">
+                            <i class="fas fa-database text-4xl mb-4"></i>
+                            <p class="text-lg">Chưa có collections nào</p>
+                            <p class="text-sm">Hãy tạo collection đầu tiên để bắt đầu</p>
+                            <a href="{% url 'qdrant_manager:collection_create' %}" 
+                               class="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+                                Tạo collection đầu tiên
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="bg-white px-4 py-3 border-t border-gray-200 sm:px-6">
+        <div class="flex items-center justify-between">
+            <div class="flex-1 flex justify-between sm:hidden">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" 
+                       class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        Trước
+                    </a>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" 
+                       class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        Sau
+                    </a>
+                {% endif %}
+            </div>
+            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-sm text-gray-700">
+                        Hiển thị 
+                        <span class="font-medium">{{ page_obj.start_index }}</span>
+                        đến 
+                        <span class="font-medium">{{ page_obj.end_index }}</span>
+                        trong tổng số 
+                        <span class="font-medium">{{ page_obj.paginator.count }}</span>
+                        collections
+                    </p>
+                </div>
+                <div>
+                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                        {% if page_obj.has_previous %}
+                            <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" 
+                               class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                <i class="fas fa-chevron-left"></i>
+                            </a>
+                        {% endif %}
+                        
+                        {% for num in page_obj.paginator.page_range %}
+                            {% if page_obj.number == num %}
+                                <span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-blue-50 text-sm font-medium text-blue-600">
+                                    {{ num }}
+                                </span>
+                            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                <a href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}" 
+                                   class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                    {{ num }}
+                                </a>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if page_obj.has_next %}
+                            <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" 
+                               class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                <i class="fas fa-chevron-right"></i>
+                            </a>
+                        {% endif %}
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- JavaScript -->
+<script>
+function deleteCollection(collectionId, collectionName) {
+    if (confirm(`Bạn có chắc chắn muốn xóa collection "${collectionName}"? Thao tác này không thể hoàn tác!`)) {
+        fetch(`{% url 'qdrant_manager:collection_delete' 0 %}`.replace('0', collectionId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove the row from table
+                const row = document.getElementById(`collection-${collectionId}`);
+                if (row) {
+                    row.remove();
+                }
+                
+                // Show success message
+                showMessage(data.message, 'success');
+                
+                // Reload page if no more items
+                const tbody = document.querySelector('tbody');
+                if (tbody.children.length === 0) {
+                    window.location.reload();
+                }
+            } else {
+                showMessage(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showMessage('Có lỗi xảy ra khi xóa collection!', 'error');
+        });
+    }
+}
+
+function showMessage(message, type) {
+    const alertClass = type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700';
+    const alertHTML = `
+        <div class="${alertClass} px-4 py-3 rounded relative mb-4 border" role="alert">
+            <span class="block sm:inline">${message}</span>
+            <span class="absolute top-0 bottom-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">
+                <i class="fas fa-times cursor-pointer"></i>
+            </span>
+        </div>
+    `;
+    
+    const container = document.querySelector('.bg-white.shadow-lg.rounded-lg');
+    container.insertAdjacentHTML('afterbegin', alertHTML);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        const alert = container.querySelector('[role="alert"]');
+        if (alert) alert.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}

@@ -8,6 +8,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("i18n/setlang/", set_language, name="set_language"),
     path("accounts/", include("django.contrib.auth.urls")),  # login, logout, password views
+    path("qdrant/", include("qdrant_manager.urls")),  # Qdrant manager
     path("", include("chat.urls")),
 ]
 

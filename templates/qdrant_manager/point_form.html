@@ -1,0 +1,244 @@
+{% extends 'qdrant_manager/base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white shadow-lg rounded-lg">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <div class="flex items-center">
+                        <a href="{% url 'qdrant_manager:point_list' collection.pk %}" 
+                           class="text-gray-500 hover:text-gray-700 mr-2">
+                            <i class="fas fa-arrow-left"></i>
+                        </a>
+                        <h1 class="text-2xl font-bold text-gray-800">
+                            <i class="fas fa-dot-circle mr-2 text-green-600"></i>
+                            {{ title }}
+                        </h1>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-1">Collection: {{ collection.name }}</p>
+                </div>
+                <a href="{% url 'qdrant_manager:point_list' collection.pk %}" 
+                   class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Quay lại
+                </a>
+            </div>
+        </div>
+
+        <!-- Form -->
+        <form method="post" class="p-6">
+            {% csrf_token %}
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Left Column -->
+                <div class="space-y-6">
+                    <!-- Point ID -->
+                    <div>
+                        <label for="{{ form.point_id.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-fingerprint mr-2 text-blue-600"></i>
+                            Point ID *
+                        </label>
+                        {{ form.point_id }}
+                        {% if form.point_id.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {% for error in form.point_id.errors %}
+                                    <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">ID duy nhất của point trong collection</p>
+                    </div>
+
+                    <!-- Title -->
+                    <div>
+                        <label for="{{ form.title.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-heading mr-2 text-purple-600"></i>
+                            Tiêu đề
+                        </label>
+                        {{ form.title }}
+                        {% if form.title.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {% for error in form.title.errors %}
+                                    <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">Tiêu đề hoặc tên ngắn gọn</p>
+                    </div>
+
+                    <!-- Content -->
+                    <div>
+                        <label for="{{ form.content.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-align-left mr-2 text-green-600"></i>
+                            Nội dung *
+                        </label>
+                        {{ form.content }}
+                        {% if form.content.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {% for error in form.content.errors %}
+                                    <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">Nội dung text sẽ được vector hóa</p>
+                    </div>
+
+                    <!-- File Name -->
+                    <div>
+                        <label for="{{ form.file_name.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-file mr-2 text-yellow-600"></i>
+                            Tên file
+                        </label>
+                        {{ form.file_name }}
+                        {% if form.file_name.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {% for error in form.file_name.errors %}
+                                    <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">Tên file nguồn (nếu có)</p>
+                    </div>
+                </div>
+
+                <!-- Right Column -->
+                <div class="space-y-6">
+                    <!-- Category -->
+                    <div>
+                        <label for="{{ form.category.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-tag mr-2 text-orange-600"></i>
+                            Danh mục
+                        </label>
+                        {{ form.category }}
+                        {% if form.category.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {% for error in form.category.errors %}
+                                    <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">Phân loại nội dung (ví dụ: document, code, image)</p>
+                    </div>
+
+                    <!-- Tags -->
+                    <div>
+                        <label for="{{ form.tags.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-tags mr-2 text-pink-600"></i>
+                            Tags
+                        </label>
+                        {{ form.tags }}
+                        {% if form.tags.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {% for error in form.tags.errors %}
+                                    <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">Các tag cách nhau bằng dấu phẩy (ví dụ: python, machine-learning, tutorial)</p>
+                    </div>
+
+                    <!-- Source URL -->
+                    <div>
+                        <label for="{{ form.source.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-link mr-2 text-blue-600"></i>
+                            URL nguồn
+                        </label>
+                        {{ form.source }}
+                        {% if form.source.errors %}
+                            <div class="mt-1 text-sm text-red-600">
+                                {% for error in form.source.errors %}
+                                    <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <p class="mt-1 text-sm text-gray-500">URL nguồn của nội dung (nếu có)</p>
+                    </div>
+
+                    <!-- Vector Options -->
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <h3 class="text-sm font-medium text-gray-700 mb-3">
+                            <i class="fas fa-vector-square mr-2 text-purple-600"></i>
+                            Cài đặt Vector
+                        </h3>
+                        
+                        <!-- Generate Vector Checkbox -->
+                        <div class="flex items-center mb-3">
+                            {{ form.generate_vector }}
+                            <label for="{{ form.generate_vector.id_for_label }}" class="ml-2 text-sm text-gray-700">
+                                Tự động tạo vector
+                            </label>
+                        </div>
+                        
+                        <p class="text-xs text-gray-600">
+                            {% if point %}
+                                Vector hiện tại: {{ collection.vector_size }} dimensions
+                            {% else %}
+                                Vector sẽ được tạo với {{ collection.vector_size }} dimensions sử dụng {{ collection.distance_metric }} distance
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Metadata -->
+            <div class="mt-6">
+                <h3 class="text-sm font-medium text-gray-700 mb-3">
+                    <i class="fas fa-database mr-2 text-gray-600"></i>
+                    Metadata bổ sung (JSON)
+                </h3>
+                <div>
+                    {{ form.additional_metadata }}
+                    {% if form.additional_metadata.errors %}
+                        <div class="mt-1 text-sm text-red-600">
+                            {% for error in form.additional_metadata.errors %}
+                                <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <p class="mt-1 text-sm text-gray-500">
+                        Metadata bổ sung dưới dạng JSON (ví dụ: {"author": "John", "chapter": 1})
+                    </p>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex items-center justify-end space-x-4 mt-8 pt-6 border-t border-gray-200">
+                <a href="{% url 'qdrant_manager:point_list' collection.pk %}" 
+                   class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-2 rounded-lg">
+                    <i class="fas fa-times mr-2"></i>
+                    Hủy
+                </a>
+                <button type="submit" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
+                    <i class="fas fa-save mr-2"></i>
+                    {% if point %}Cập nhật Point{% else %}Tạo Point{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Help Section -->
+    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 class="text-lg font-medium text-blue-800 mb-2">
+            <i class="fas fa-info-circle mr-2"></i>
+            Hướng dẫn
+        </h3>
+        <div class="text-sm text-blue-700 space-y-2">
+            <p><strong>Point</strong> là một vector data point trong collection, bao gồm vector và metadata.</p>
+            <p><strong>Point ID</strong> phải duy nhất trong collection. Có thể là UUID, số, hoặc chuỗi.</p>
+            <p><strong>Content</strong> là nội dung chính sẽ được chuyển thành vector để tìm kiếm.</p>
+            <p><strong>Metadata</strong> giúp lưu trữ thông tin bổ sung và lọc kết quả tìm kiếm.</p>
+            <div class="bg-blue-100 p-3 rounded mt-3">
+                <p class="font-medium">Ví dụ metadata JSON:</p>
+                <code class="text-xs block mt-1">
+                    {"author": "John Doe", "chapter": 1, "page": 15, "difficulty": "intermediate"}
+                </code>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
