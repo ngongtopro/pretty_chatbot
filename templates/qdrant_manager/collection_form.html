@@ -1,0 +1,140 @@
+{% extends 'qdrant_manager/base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white shadow-lg rounded-lg">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <h1 class="text-2xl font-bold text-gray-800">
+                    <i class="fas fa-cube mr-2 text-blue-600"></i>
+                    {{ title }}
+                </h1>
+                <a href="{% url 'qdrant_manager:collection_list' %}" 
+                   class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Quay lại
+                </a>
+            </div>
+        </div>
+
+        <!-- Form -->
+        <form method="post" class="p-6">
+            {% csrf_token %}
+            
+            <div class="space-y-6">
+                <!-- Collection Name -->
+                <div>
+                    <label for="{{ form.name.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-tag mr-2 text-blue-600"></i>
+                        Tên Collection *
+                    </label>
+                    {{ form.name }}
+                    {% if form.name.errors %}
+                        <div class="mt-1 text-sm text-red-600">
+                            {% for error in form.name.errors %}
+                                <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <p class="mt-1 text-sm text-gray-500">Tên collection trên Qdrant server (không thể thay đổi sau khi tạo)</p>
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <label for="{{ form.description.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-align-left mr-2 text-gray-600"></i>
+                        Mô tả
+                    </label>
+                    {{ form.description }}
+                    {% if form.description.errors %}
+                        <div class="mt-1 text-sm text-red-600">
+                            {% for error in form.description.errors %}
+                                <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <p class="mt-1 text-sm text-gray-500">Mô tả ngắn về collection này</p>
+                </div>
+
+                <!-- Vector Size -->
+                <div>
+                    <label for="{{ form.vector_size.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-vector-square mr-2 text-green-600"></i>
+                        Kích thước Vector *
+                    </label>
+                    {{ form.vector_size }}
+                    {% if form.vector_size.errors %}
+                        <div class="mt-1 text-sm text-red-600">
+                            {% for error in form.vector_size.errors %}
+                                <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <p class="mt-1 text-sm text-gray-500">Số chiều của vector (thường là 384, 768, 1536 tùy thuộc vào model embedding)</p>
+                </div>
+
+                <!-- Distance Metric -->
+                <div>
+                    <label for="{{ form.distance_metric.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-ruler mr-2 text-purple-600"></i>
+                        Độ đo khoảng cách *
+                    </label>
+                    {{ form.distance_metric }}
+                    {% if form.distance_metric.errors %}
+                        <div class="mt-1 text-sm text-red-600">
+                            {% for error in form.distance_metric.errors %}
+                                <p><i class="fas fa-exclamation-circle mr-1"></i>{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    <div class="mt-2 space-y-2 text-sm text-gray-600">
+                        <div class="bg-gray-50 p-3 rounded">
+                            <p class="font-medium">Các loại độ đo:</p>
+                            <ul class="mt-1 space-y-1 text-xs">
+                                <li><strong>Cosine:</strong> Phù hợp nhất cho text embeddings (OpenAI, Sentence Transformers)</li>
+                                <li><strong>Euclidean:</strong> Khoảng cách trong không gian Euclidean</li>
+                                <li><strong>Dot:</strong> Tích vô hướng (nhanh nhưng ít chính xác)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex items-center justify-end space-x-4 mt-8 pt-6 border-t border-gray-200">
+                <a href="{% url 'qdrant_manager:collection_list' %}" 
+                   class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-2 rounded-lg">
+                    <i class="fas fa-times mr-2"></i>
+                    Hủy
+                </a>
+                <button type="submit" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
+                    <i class="fas fa-save mr-2"></i>
+                    {% if collection %}Cập nhật{% else %}Tạo Collection{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Help Section -->
+    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h3 class="text-lg font-medium text-blue-800 mb-2">
+            <i class="fas fa-info-circle mr-2"></i>
+            Hướng dẫn
+        </h3>
+        <div class="text-sm text-blue-700 space-y-2">
+            <p><strong>Collection</strong> là container chứa các vectors có cùng kích thước và cùng độ đo khoảng cách.</p>
+            <p><strong>Vector Size</strong> phải khớp với kích thước output của model embedding bạn sử dụng:</p>
+            <ul class="list-disc list-inside ml-4 space-y-1">
+                <li><strong>OpenAI text-embedding-ada-002:</strong> 1536 dimensions</li>
+                <li><strong>Sentence Transformers all-MiniLM-L6-v2:</strong> 384 dimensions</li>
+                <li><strong>Sentence Transformers all-mpnet-base-v2:</strong> 768 dimensions</li>
+            </ul>
+            <p><strong>Distance Metric</strong> nên chọn <em>Cosine</em> cho hầu hết ứng dụng text search.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

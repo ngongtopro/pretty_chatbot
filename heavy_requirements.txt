@@ -1,0 +1,10 @@
+torch
+transformers
+unstructured
+scikit-learn
+numpy
+pandas
+langchain
+langchain-community
+langchain-text-splitters
+qdrant-client

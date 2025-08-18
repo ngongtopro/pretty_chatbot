@@ -1,40 +1,50 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse
-from langchain_community.document_loaders import PyPDFLoader, UnstructuredWordDocumentLoader, TextLoader
-from langchain_text_splitters import TokenTextSplitter
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue, MatchText
+from qdrant_client.models import VectorParams, Distance
 from transformers import AutoTokenizer, AutoModel
 import torch
-import os
-import time
-import uuid
-import tempfile
 from pydantic import BaseModel
 from typing import List, Optional
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-import re
-import emoji
 import logging
-from text_normalizer import update_dictionary_from_files, normalize_query
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
 # Qdrant setup
-qdrant = QdrantClient(host="localhost", port=6333)
 COLLECTION_NAME = "chatbot_collection_v3"
 VECTOR_SIZE = 1024
 
-if COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
-    qdrant.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
-    )
+def get_qdrant_client():
+    """Get Qdrant client instance"""
+    try:
+        client = QdrantClient(host="localhost", port=6333)
+        return client
+    except Exception as e:
+        logger.warning(f"Could not connect to Qdrant: {e}")
+        return None
+
+def ensure_collection_exists():
+    """Ensure the collection exists in Qdrant"""
+    qdrant = get_qdrant_client()
+    if qdrant is None:
+        return False
+    
+    try:
+        if COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
+            qdrant.create_collection(
+                collection_name=COLLECTION_NAME,
+                vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+            )
+        return True
+    except Exception as e:
+        logger.warning(f"Could not ensure collection exists: {e}")
+        return False
+
+# Initialize qdrant variable for backwards compatibility
+qdrant = None
 
 # Embedding model
 model_name = "intfloat/multilingual-e5-large-instruct"
@@ -128,186 +138,3 @@ def mmr(query_vec: np.ndarray, doc_vecs: np.ndarray, docs: List, top_k: int = 5,
         selected_idxs.append(best_idx)
         selected.append(docs[best_idx])
     return selected
-
-# ===========================
-# API Upload từ điển
-# ===========================
-@app.post("/upload_dict")
-async def upload_dict(files: List[UploadFile] = File(...)):
-    temp_paths = []
-    for file in files:
-        ext = os.path.splitext(file.filename)[1]
-        temp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}{ext}")
-        with open(temp_path, "wb") as f:
-            f.write(await file.read())
-        temp_paths.append(temp_path)
-
-    result = update_dictionary_from_files(temp_paths)
-
-    for path in temp_paths:
-        os.remove(path)
-
-    return {"status": "dictionary updated", **result}
-
-
-# ===========================
-# Search API with Hybrid
-# ===========================
-
-@app.post("/search")
-async def search(req: SearchRequest):
-    start_time = time.time()
-    logger.info(f"Raw question: {req.query}")
-    cleaned_query = normalize_query(req.query)
-    logger.info(f"Normalized question: {cleaned_query}")
-    query_vector = embed_texts([f"query: {cleaned_query}"])[0]
-    query_tokens = cleaned_query.lower().split()
-
-    # ------------------------------
-    # Nếu có filename → dùng luôn để lọc
-    # ------------------------------
-    qdrant_filter = None
-    if req.filename:
-        qdrant_filter = Filter(
-            must=[
-                FieldCondition(
-                    key="metadata.file_name",
-                    match=MatchValue(value=req.filename)
-                )
-            ]
-        )
-        logger.info(f"Applying filename filter from request: {req.filename}")
-
-
-    # ------------------------------
-    # Search trong file được chọn
-    # ------------------------------
-    search_result = qdrant.search(
-        collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
-        limit=50,
-        with_payload=True,
-        with_vectors=True,
-        query_filter=qdrant_filter
-    )
-
-    if not search_result:
-        return {"results": []}
-
-    # Lấy candidates
-    candidates = [(hit.payload.get("content", ""), hit.payload.get("metadata", {})) for hit in search_result]
-    candidate_texts = [content for content, meta in candidates]
-    candidate_vecs = np.array([hit.vector for hit in search_result], dtype=np.float32)
-
-    # BM25 scoring
-    bm25_scores = compute_bm25_scores(query_tokens, candidate_texts)
-    if np.max(bm25_scores) - np.min(bm25_scores) != 0:
-        bm25_norm = (bm25_scores - np.min(bm25_scores)) / (np.max(bm25_scores) - np.min(bm25_scores))
-    else:
-        bm25_norm = np.zeros_like(bm25_scores)
-
-    # Vector similarity
-    vec_sim = cosine_similarity([query_vector], candidate_vecs)[0]
-
-    # Hybrid score
-    alpha = 0.4
-    hybrid_scores = alpha * bm25_norm + (1 - alpha) * vec_sim
-
-    # Sort & MMR
-    sorted_indices = np.argsort(hybrid_scores)[::-1]
-    sorted_candidates = [candidates[i] for i in sorted_indices[:50]]
-    sorted_vecs = candidate_vecs[sorted_indices[:50]]
-
-    selected = mmr(
-        np.array(query_vector, dtype=np.float32),
-        sorted_vecs,
-        sorted_candidates,
-        top_k=7
-    )
-
-    # Merge kết quả cùng file
-    merged_results = []
-    prev_meta, buffer_text = None, []
-    for text, meta in selected:
-        logger.info(f"Meta: {meta} \n")
-        logger.info(f"Text: {text} \n")
-        if prev_meta == meta:
-            buffer_text.append(text)
-        else:
-            if buffer_text:
-                merged_results.append(" ".join(buffer_text))
-            buffer_text = [text]
-            prev_meta = meta
-    if buffer_text:
-        merged_results.append(" ".join(buffer_text))
-
-    logger.info(f"Search time: {time.time() - start_time:.2f}s")
-    return {"results": merged_results}
-
-# ===========================
-# Upload API
-# ===========================
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    start_time = time.time()
-    file_ext = os.path.splitext(file.filename)[1].lower()
-    temp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}{file_ext}")
-    with open(temp_path, "wb") as f:
-        f.write(await file.read())
-
-    try:
-        if COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
-            qdrant.create_collection(
-                collection_name=COLLECTION_NAME,
-                vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
-            )
-
-        if file_ext == ".pdf":
-            loader = PyPDFLoader(temp_path)
-        elif file_ext == ".docx":
-            loader = UnstructuredWordDocumentLoader(temp_path)
-        elif file_ext == ".txt":
-            loader = TextLoader(temp_path, encoding="utf-8")
-        else:
-            return JSONResponse(content={"error": "Unsupported file type"}, status_code=400)
-
-        docs = loader.load()
-
-        # Token-based splitter
-        text_splitter = TokenTextSplitter(
-            chunk_size=300,  # Tokens
-            chunk_overlap=45  # ~15%
-        )
-        chunks = text_splitter.split_documents(docs)
-
-        # Add file_name to metadata
-        for chunk in chunks:
-            chunk.metadata["file_name"] = file.filename
-            chunk.metadata["upsert_timestamp"] = int(time.time())
-
-        # Batch embed
-        texts = [f"passage: {chunk.page_content}" for chunk in chunks]
-        vectors = embed_texts(texts)
-
-        points = []
-        for i, vector in enumerate(vectors):
-            points.append(PointStruct(
-                id=uuid.uuid4().hex,  # Unique ID
-                vector=vector,
-                payload={"content": chunks[i].page_content, "metadata": chunks[i].metadata}
-            ))
-
-        qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
-        
-        logger.info(f"Upload time: {time.time() - start_time:.2f}s")
-        return {
-            "status": "completed",
-            "vectors": len(points),
-            "chunk_size": 300,  # tokens
-            "overlap": 45
-        }
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-    finally:
-        os.remove(temp_path)

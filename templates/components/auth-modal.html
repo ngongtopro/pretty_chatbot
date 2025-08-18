@@ -1,0 +1,51 @@
+{% load i18n %}
+<div id="auth-modal" class="hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+      <h3 class="font-semibold">{% trans "Tài khoản" %}</h3>
+      <button data-close-auth class="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800">&times;<span class="sr-only">Close</span></button>
+    </div>
+    <div class="px-4 pt-4">
+      <div class="grid grid-cols-2 gap-2 mb-4">
+        <button data-auth-tab="login" class="col-span-1 px-3 py-2 rounded-md bg-emerald-500 text-white">{% trans "Đăng nhập" %}</button>
+        <button data-auth-tab="register" class="col-span-1 px-3 py-2 rounded-md">{% trans "Đăng ký" %}</button>
+      </div>
+
+      <div data-auth-panel="login" class="">
+        <form method="post" action="{% url 'login' %}" class="space-y-3">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <div>
+            <label class="block text-sm mb-1">{% trans "Tên đăng nhập" %}</label>
+            <input name="username" required class="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">{% trans "Mật khẩu" %}</label>
+            <input type="password" name="password" required class="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2" />
+          </div>
+          <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-2">{% trans "Đăng nhập" %}</button>
+        </form>
+      </div>
+
+      <div data-auth-panel="register" class="hidden">
+        <!-- Register form disabled - no user registration -->
+        <div class="text-center text-gray-500 py-4">
+          <p>{% trans "Tính năng đăng ký tạm thời không khả dụng" %}</p>
+        </div>
+      </div>
+          <div>
+            <label class="block text-sm mb-1">{% trans "Mật khẩu" %}</label>
+            <input type="password" name="password1" required class="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">{% trans "Xác nhận mật khẩu" %}</label>
+            <input type="password" name="password2" required class="w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2" />
+          </div>
+          <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-3 py-2">{% trans "Đăng ký" %}</button>
+        </form>
+      </div>
+
+      <div class="py-3"></div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,312 @@
+{% extends 'qdrant_manager/base.html' %}
+{% load qdrant_extras %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="bg-white shadow-lg rounded-lg">
+    <!-- Header -->
+    <div class="px-6 py-4 border-b border-gray-200">
+        <div class="flex justify-between items-center">
+            <div>
+                <div class="flex items-center">
+                    <a href="{% url 'qdrant_manager:point_list' collection.pk %}" 
+                       class="text-gray-500 hover:text-gray-700 mr-2">
+                        <i class="fas fa-arrow-left"></i>
+                    </a>
+                    <h1 class="text-2xl font-bold text-gray-800">
+                        <i class="fas fa-dot-circle mr-2 text-green-600"></i>
+                        Chi tiết Point: {{ point.point_id|truncatechars:30 }}
+                    </h1>
+                </div>
+                <p class="text-sm text-gray-600 mt-1">Trong collection "{{ collection.name }}"</p>
+            </div>
+            <div class="flex space-x-2">
+                <a href="{% url 'qdrant_manager:point_list' collection.pk %}"
+                   class="bg-gray-500 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Quay lại danh sách
+                </a>
+                <a href="{% url 'qdrant_manager:point_edit' collection.pk point.pk %}" 
+                   class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-edit mr-2"></i>
+                    Chỉnh sửa
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content -->
+    <div class="p-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Left Column - Basic Info -->
+            <div class="space-y-6">
+                <!-- Point ID Card -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-blue-800 mb-3">
+                        <i class="fas fa-tag mr-2"></i>Thông tin cơ bản
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Point ID</label>
+                            <p class="mt-1 text-sm text-gray-900 bg-white p-2 rounded border break-all">{{ point.point_id }}</p>
+                        </div>
+                        {% if point.title %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Title</label>
+                            <p class="mt-1 text-sm text-gray-900 bg-white p-2 rounded border">{{ point.title }}</p>
+                        </div>
+                        {% endif %}
+                        {% if point.file_name %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">File Name</label>
+                            <p class="mt-1 text-sm text-gray-900 bg-white p-2 rounded border">{{ point.file_name }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Content Card -->
+                {% if point.content %}
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-green-800 mb-3">
+                        <i class="fas fa-file-text mr-2"></i>Nội dung
+                    </h3>
+                    <div class="bg-white p-3 rounded border">
+                        <pre class="text-sm text-gray-900 whitespace-pre-wrap">{{ point.content }}</pre>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Metadata Card -->
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-purple-800 mb-3">
+                        <i class="fas fa-tags mr-2"></i>Metadata
+                    </h3>
+                    <div class="space-y-3">
+                        {% if point.category %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Danh mục</label>
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                                {{ point.category }}
+                            </span>
+                        </div>
+                        {% endif %}
+                        
+                        {% if point.tags %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Tags</label>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                                {% for tag in point.tags %}
+                                <span class="inline-flex items-center px-2 py-1 rounded text-sm font-medium bg-gray-100 text-gray-800">
+                                    {{ tag }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if point.source %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Nguồn</label>
+                            <p class="mt-1 text-sm text-gray-900 bg-white p-2 rounded border break-all">
+                                <i class="fas fa-link mr-1"></i>{{ point.source }}
+                            </p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column - Technical Info -->
+            <div class="space-y-6">
+                <!-- Status Card -->
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-info-circle mr-2"></i>Trạng thái
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Sync Status</label>
+                            <div class="mt-1">
+                                {% if point.qdrant_synced %}
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                    <i class="fas fa-check mr-1"></i>Synced
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                                    <i class="fas fa-clock mr-1"></i>Pending
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Ngày tạo</label>
+                            <p class="mt-1 text-sm text-gray-900">{{ point.created_at|date:"d/m/Y H:i" }}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Cập nhật lần cuối</label>
+                            <p class="mt-1 text-sm text-gray-900">{{ point.updated_at|date:"d/m/Y H:i" }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vector Info Card -->
+                {% if point.vector_data %}
+                <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-orange-800 mb-3">
+                        <i class="fas fa-vector-square mr-2"></i>Vector Data
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Kích thước vector</label>
+                            <p class="mt-1 text-sm text-gray-900">{{ point.vector_data|length }} dimensions</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Preview (10 giá trị đầu)</label>
+                            <div class="mt-1 bg-white p-2 rounded border">
+                                <code class="text-xs text-gray-900">
+                                    [{% for val in point.vector_data|slice:":10" %}{{ val|floatformat:4 }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if point.vector_data|length > 10 %}, ...{% endif %}]
+                                </code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Qdrant Server Data -->
+                {% if qdrant_point_data %}
+                <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-indigo-800 mb-3">
+                        <i class="fas fa-server mr-2"></i>Dữ liệu từ Qdrant Server
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Point ID trên server</label>
+                            <p class="mt-1 text-sm text-gray-900 bg-white p-2 rounded border break-all">{{ qdrant_point_data.id }}</p>
+                        </div>
+                        
+                        {% if qdrant_point_data.payload %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Payload</label>
+                            <div class="mt-1 bg-white p-2 rounded border">
+                                <pre class="text-xs text-gray-900 overflow-auto max-h-40">{{ qdrant_point_data.payload|pprint }}</pre>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if qdrant_point_data.vector %}
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Vector từ server</label>
+                            <div class="space-y-2">
+                                <p class="text-sm text-gray-900">Kích thước: {{ qdrant_point_data.vector|length }} dimensions</p>
+                                <div class="bg-white p-2 rounded border">
+                                    <code class="text-xs text-gray-900">
+                                        [{% for val in qdrant_point_data.vector|slice:":10" %}{{ val|floatformat:4 }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if qdrant_point_data.vector|length > 10 %}, ...{% endif %}]
+                                    </code>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Payload Raw Data -->
+                {% if point.payload %}
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">
+                        <i class="fas fa-code mr-2"></i>Raw Payload Data
+                    </h3>
+                    <div class="bg-white p-3 rounded border">
+                        <pre class="text-xs text-gray-900 overflow-auto max-h-40">{{ point.payload|pprint }}</pre>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-8 pt-6 border-t border-gray-200">
+            <div class="flex justify-between items-center">
+                <a href="{% url 'qdrant_manager:point_list' collection.pk %}"
+                   class="bg-gray-500 hover:bg-gray-700 text-white px-6 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    Quay lại danh sách
+                </a>
+                
+                <div class="flex space-x-3">
+                    <a href="{% url 'qdrant_manager:point_edit' collection.pk point.pk %}" 
+                       class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg flex items-center">
+                        <i class="fas fa-edit mr-2"></i>
+                        Chỉnh sửa Point
+                    </a>
+                    
+                    <button onclick="deletePoint({{ point.pk }}, '{{ point.point_id }}', '{{ point.file_name|default:"" }}')" 
+                            class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg flex items-center">
+                        <i class="fas fa-trash mr-2"></i>
+                        Xóa Point
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript -->
+<script>
+function deletePoint(pointId, pointIdStr, fileName) {
+    let confirmMessage = `Bạn có chắc chắn muốn xóa point "${pointIdStr}"?`;
+    
+    if (fileName && fileName.trim() !== '') {
+        confirmMessage = `Bạn có chắc chắn muốn xóa point "${pointIdStr}" và tất cả points khác có cùng file "${fileName}"?\n\nCảnh báo: Tất cả points có cùng tên file sẽ bị xóa!`;
+    }
+    
+    if (confirm(confirmMessage)) {
+        fetch(`{% url 'qdrant_manager:point_delete' collection.pk 0 %}`.replace('0', pointId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showMessage(data.message, 'success');
+                setTimeout(() => {
+                    window.location.href = "{% url 'qdrant_manager:point_list' collection.pk %}";
+                }, 1500);
+            } else {
+                showMessage(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showMessage('Có lỗi xảy ra khi xóa point!', 'error');
+        });
+    }
+}
+
+function showMessage(message, type) {
+    const alertClass = type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700';
+    const alertHTML = `
+        <div class="${alertClass} px-4 py-3 rounded relative mb-4 border" role="alert">
+            <span class="block sm:inline">${message}</span>
+            <span class="absolute top-0 bottom-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">
+                <i class="fas fa-times cursor-pointer"></i>
+            </span>
+        </div>
+    `;
+    
+    const container = document.querySelector('.bg-white.shadow-lg.rounded-lg');
+    container.insertAdjacentHTML('afterbegin', alertHTML);
+    
+    setTimeout(() => {
+        const alert = container.querySelector('[role="alert"]');
+        if (alert) alert.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}
