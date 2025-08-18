@@ -1,10 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from langchain_community.document_loaders import PyPDFLoader, UnstructuredWordDocumentLoader, TextLoader
-from langchain_text_splitters import TokenTextSplitter
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue, MatchText
-from transformers import AutoTokenizer, AutoModel
+from qdrant_client.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue
 import torch
 import os
 import time
@@ -14,11 +12,13 @@ from pydantic import BaseModel
 from typing import List, Optional
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-import re
-import emoji
+
 import logging
 from text_normalizer import update_dictionary_from_files, normalize_query
-
+from collections import defaultdict
+from semantic_text_splitter import TextSplitter
+from langchain.schema import Document
+from sentence_transformers import SentenceTransformer
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +29,8 @@ app = FastAPI()
 qdrant = QdrantClient(host="localhost", port=6333)
 COLLECTION_NAME = "chatbot_collection_v3"
 VECTOR_SIZE = 1024
+MAX_TOKENS = 500  # Tokens per chunk
+OVERLAP = 100  # Overlap tokens
 
 if COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]:
     qdrant.create_collection(
@@ -37,32 +39,15 @@ if COLLECTION_NAME not in [c.name for c in qdrant.get_collections().collections]
     )
 
 # Embedding model
-model_name = "intfloat/multilingual-e5-large-instruct"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModel.from_pretrained(model_name)
-
-# Move model to GPU if available
+model_name = "jinaai/jina-embeddings-v3"
+model = SentenceTransformer(model_name, trust_remote_code=True)
+splitter = TextSplitter(capacity=MAX_TOKENS, overlap=OVERLAP)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
 class SearchRequest(BaseModel):
     query: str
     filename: Optional[str] = None
-
-# ===========================
-# Batch Embedding helper
-# ===========================
-def embed_texts(texts: List[str], batch_size: int = 16) -> List[List[float]]:
-    embeddings = []
-    with torch.no_grad():
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            encoded_input = tokenizer(batch, return_tensors='pt', truncation=True, max_length=512, padding=True).to(device)
-            model_output = model(**encoded_input)
-            batch_emb = model_output.last_hidden_state.mean(dim=1)
-            norm_emb = torch.nn.functional.normalize(batch_emb, p=2, dim=1)
-            embeddings.extend(norm_emb.cpu().tolist())
-    return embeddings
 
 # ===========================
 # Simple BM25 implementation for hybrid search
@@ -153,18 +138,17 @@ async def upload_dict(files: List[UploadFile] = File(...)):
 # ===========================
 # Search API with Hybrid
 # ===========================
-
 @app.post("/search")
 async def search(req: SearchRequest):
     start_time = time.time()
     logger.info(f"Raw question: {req.query}")
     cleaned_query = normalize_query(req.query)
     logger.info(f"Normalized question: {cleaned_query}")
-    query_vector = embed_texts([f"query: {cleaned_query}"])[0]
+    query_vector = model.encode([f"query: {cleaned_query}"], task="text-matching")[0]
     query_tokens = cleaned_query.lower().split()
 
     # ------------------------------
-    # Nếu có filename → dùng luôn để lọc
+    # Nếu có filename → dùng luôn để lọc (giữ nguyên)
     # ------------------------------
     qdrant_filter = None
     if req.filename:
@@ -178,9 +162,8 @@ async def search(req: SearchRequest):
         )
         logger.info(f"Applying filename filter from request: {req.filename}")
 
-
     # ------------------------------
-    # Search trong file được chọn
+    # Search trong Qdrant: Tăng limit lên 200 để cải thiện recall
     # ------------------------------
     search_result = qdrant.search(
         collection_name=COLLECTION_NAME,
@@ -209,35 +192,65 @@ async def search(req: SearchRequest):
     # Vector similarity
     vec_sim = cosine_similarity([query_vector], candidate_vecs)[0]
 
-    # Hybrid score
-    alpha = 0.4
+    # Hybrid score: Tăng alpha lên 0.5 để cân bằng BM25 và vector
+    alpha = 0.4  # Có thể dynamic dựa trên len(query_tokens)
     hybrid_scores = alpha * bm25_norm + (1 - alpha) * vec_sim
 
-    # Sort & MMR
-    sorted_indices = np.argsort(hybrid_scores)[::-1]
-    sorted_candidates = [candidates[i] for i in sorted_indices[:50]]
-    sorted_vecs = candidate_vecs[sorted_indices[:50]]
+    # ------------------------------
+    # Group by file và chọn file tốt nhất dựa trên MAX hybrid score
+    # ------------------------------
+    file_to_scores = defaultdict(list)
+    file_to_candidates = defaultdict(list)
+    file_to_vecs = defaultdict(list)
 
-    selected = mmr(
+    for idx, score in enumerate(hybrid_scores):
+        meta = candidates[idx][1]
+        file_name = meta.get("file_name", "unknown")
+        file_to_scores[file_name].append(score)
+        file_to_candidates[file_name].append(candidates[idx])
+        file_to_vecs[file_name].append(candidate_vecs[idx])
+
+    # Chọn file có chunk với MAX score (thay vì average)
+    file_max_scores = {file: np.max(scores) for file, scores in file_to_scores.items() if scores}
+    if not file_max_scores:
+        return {"results": []}
+
+    best_file = max(file_max_scores, key=file_max_scores.get)
+    logger.info(f"Best file selected: {best_file} with max score: {file_max_scores[best_file]:.4f}")
+
+    # Lấy candidates và vecs chỉ từ best_file
+    selected_candidates = file_to_candidates[best_file]
+    selected_vecs = np.array(file_to_vecs[best_file], dtype=np.float32)
+    selected_hybrid_scores = [hybrid_scores[idx] for idx, cand in enumerate(candidates) if cand[1].get("file_name") == best_file]
+
+    # Sort theo hybrid score descending
+    sorted_indices = np.argsort(selected_hybrid_scores)[::-1]
+    sorted_candidates = [selected_candidates[i] for i in sorted_indices]
+    sorted_vecs = selected_vecs[sorted_indices]
+
+    # Áp dụng MMR re-ranking trên chunks của best_file (top_k=7, giảm lambda để ưu tiên relevance)
+    mmr_selected = mmr(
         np.array(query_vector, dtype=np.float32),
         sorted_vecs,
         sorted_candidates,
-        top_k=7
+        top_k=7,
+        lambda_param=0.5  # Giảm lambda để ưu tiên relevance hơn trong cùng file
     )
 
-    # Merge kết quả cùng file
+    # ------------------------------
+    # Merge thông minh: Sort chunks theo thứ tự trong file (nếu có chunk_index)
+    # ------------------------------
     merged_results = []
-    prev_meta, buffer_text = None, []
-    for text, meta in selected:
-        logger.info(f"Meta: {meta} \n")
-        logger.info(f"Text: {text} \n")
-        if prev_meta == meta:
-            buffer_text.append(text)
-        else:
-            if buffer_text:
-                merged_results.append(" ".join(buffer_text))
-            buffer_text = [text]
-            prev_meta = meta
+    # Sort mmr_selected theo chunk_index (nếu có) để giữ ngữ cảnh
+    sorted_mmr = sorted(
+        mmr_selected,
+        key=lambda x: x[1].get("chunk_index", float('inf'))  # Nếu không có chunk_index, đẩy xuống cuối
+    )
+    
+    buffer_text = []
+    for text, meta in sorted_mmr:
+        buffer_text.append(text)
+    
     if buffer_text:
         merged_results.append(" ".join(buffer_text))
 
@@ -272,22 +285,28 @@ async def upload(file: UploadFile = File(...)):
             return JSONResponse(content={"error": "Unsupported file type"}, status_code=400)
 
         docs = loader.load()
-
-        # Token-based splitter
-        text_splitter = TokenTextSplitter(
-            chunk_size=300,  # Tokens
-            chunk_overlap=45  # ~15%
-        )
-        chunks = text_splitter.split_documents(docs)
+        chunks = []
+        for doc in docs:
+            for i, chunk_text in enumerate(splitter.chunks(doc.page_content)):
+                chunks.append(
+                    Document(
+                        page_content=chunk_text,
+                        metadata={
+                            "file_name": file.filename,
+                            "upsert_timestamp": int(time.time()),
+                            "chunk_index": i,
+                        },
+                    )
+                )
 
         # Add file_name to metadata
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             chunk.metadata["file_name"] = file.filename
             chunk.metadata["upsert_timestamp"] = int(time.time())
-
+            chunk.metadata["chunk_index"] = i
         # Batch embed
         texts = [f"passage: {chunk.page_content}" for chunk in chunks]
-        vectors = embed_texts(texts)
+        vectors = model.encode(texts, task="text-matching")
 
         points = []
         for i, vector in enumerate(vectors):
@@ -303,8 +322,8 @@ async def upload(file: UploadFile = File(...)):
         return {
             "status": "completed",
             "vectors": len(points),
-            "chunk_size": 300,  # tokens
-            "overlap": 45
+            "chunk_size": MAX_TOKENS,  # tokens
+            "overlap": OVERLAP
         }
     except Exception as e:
         logger.error(f"Error: {str(e)}")
